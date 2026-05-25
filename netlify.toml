@@ -1,14 +1,12 @@
-# netlify.toml
-# Put this file in:
 # C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\netlify.toml
 
 [build]
-  base = "client"
   command = "npm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
+  VITE_API_URL = "https://qa-form-2026.onrender.com"
 
 [[redirects]]
   from = "/*"

@@ -20,6 +20,26 @@ const GOOGLE_SHEET_URL =
 
 const FINAL_REVIEWER_ROLE = "QA Leader / Final Reviewer";
 
+const LOADING_GIF_URL =
+  "https://media1.tenor.com/m/IavKWJp8FJEAAAAC/meme-coffee.gif";
+
+const FUNNY_QA_LOADING_MESSAGES = [
+  "Brewing the QA scores...",
+  "Checking who forgot empathy today...",
+  "Counting Full, Partial, and Uh No moments...",
+  "Finding coaching opportunities before the coffee gets cold...",
+  "Calculating if the agent survived the rubric...",
+  "Looking for missing documentation notes...",
+  "Asking the matrix for wisdom...",
+  "Preparing manager-friendly QA truth...",
+  "Waking up the Google Sheet...",
+  "Loading the rubric like it owes us answers...",
+  "Making sure N/A counts as full credit...",
+  "Double-checking the QA tea before we spill it...",
+  "Looking for coaching gold in the call...",
+  "Please hold while the QA coffee kicks in..."
+];
+
 const defaultAppData = {
   appName: "",
   passingScore: 90,
@@ -653,24 +673,16 @@ function App() {
   }
 
   if (loading) {
-    return (
-      <div className="loading-screen">
-        <div className="spinner" />
-        <h1>Loading QA Form...</h1>
-        <p>Reading the Google Sheet tabs and preparing the React app.</p>
-      </div>
-    );
+    return <FunnyLoadingScreen title="Loading QA Form..." />;
   }
 
   if (error) {
     return (
-      <div className="loading-screen">
-        <h1>Something needs attention</h1>
-        <p>{error}</p>
-        <button className="primary-btn" onClick={loadApp}>
-          Try Again
-        </button>
-      </div>
+      <FunnyLoadingScreen
+        title="Something needs attention"
+        error={error}
+        onRetry={loadApp}
+      />
     );
   }
 
@@ -1092,6 +1104,60 @@ function App() {
       )}
 
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+function FunnyLoadingScreen({ title, error = "", onRetry }) {
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % FUNNY_QA_LOADING_MESSAGES.length);
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="loading-screen funny-loading-screen">
+      <div className="funny-loader-card">
+        <img
+          className="funny-loader-gif"
+          src={LOADING_GIF_URL}
+          alt="Loading QA app"
+        />
+
+        <h1>{title}</h1>
+
+        {!error && (
+          <>
+            <p className="funny-loader-message">
+              {FUNNY_QA_LOADING_MESSAGES[messageIndex]}
+            </p>
+            <p className="funny-loader-subtext">
+              Please wait while the app reads the Google Sheet and prepares the QA form.
+            </p>
+          </>
+        )}
+
+        {error && (
+          <>
+            <p className="funny-loader-error">{error}</p>
+            <button className="primary-btn" onClick={onRetry}>
+              Try Again
+            </button>
+          </>
+        )}
+
+        {!error && (
+          <div className="funny-loader-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

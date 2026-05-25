@@ -862,3 +862,92 @@ th {
     justify-content: center;
   }
 }
+
+/* C:\Users\User\Downloads\QA-Form-2026-main\QA-Form-2026-main\client\src\styles.css */
+
+.funny-loading-screen {
+  background: linear-gradient(135deg, #0f172a, #1e3a8a, #0284c7);
+  color: white;
+}
+
+.funny-loader-card {
+  width: min(540px, 92vw);
+  margin: auto;
+  padding: 34px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  text-align: center;
+}
+
+.funny-loader-gif {
+  width: min(320px, 100%);
+  border-radius: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.funny-loader-card h1 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 5vw, 42px);
+  color: white;
+}
+
+.funny-loader-message {
+  min-height: 34px;
+  margin: 0;
+  font-size: clamp(18px, 3vw, 23px);
+  font-weight: 900;
+  color: #fef3c7;
+}
+
+.funny-loader-subtext {
+  margin-top: 10px;
+  color: #dbeafe;
+  font-weight: 700;
+}
+
+.funny-loader-error {
+  color: #fecaca;
+  font-weight: 800;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(254, 202, 202, 0.35);
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.funny-loader-dots {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.funny-loader-dots span {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #ffffff;
+  animation: funnyBounce 0.9s infinite alternate;
+}
+
+.funny-loader-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.funny-loader-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes funnyBounce {
+  from {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-10px);
+  }
+}
