@@ -1114,7 +1114,7 @@ function FunnyLoadingScreen({ title, error = "", onRetry }) {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % FUNNY_QA_LOADING_MESSAGES.length);
-    }, 1000);
+    }, 2500);
 
     return () => window.clearInterval(interval);
   }, []);
