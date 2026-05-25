@@ -1,6 +1,7 @@
 # C:\Users\User\Downloads\QA-Form-2026-main\QA-Form-2026-main\netlify.toml
 
 [build]
+  base = "client"
   command = "npm run build"
   publish = "dist"
 
