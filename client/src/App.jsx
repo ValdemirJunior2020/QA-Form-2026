@@ -102,6 +102,96 @@ function calculateEarned(criterion, answer) {
   return 0;
 }
 
+function buildQaAnalystPrompt({ metadata, qaType, result }) {
+  const weakItems = (result.details || []).filter(
+    (item) => item.rating === "Partial" || item.rating === "Zero"
+  );
+
+  const strongItems = (result.details || []).filter(
+    (item) => item.rating === "Full" || item.rating === "N/A"
+  );
+
+  const missedText = weakItems.length
+    ? weakItems
+        .map((item, index) => {
+          return `${index + 1}. ${item.criterion}
+Rating: ${item.rating}
+Points: ${item.earned}/${item.maxPoints}
+Rubric Feedback: ${item.feedback || "No feedback provided."}
+Evaluator Notes: ${item.notes || "No notes added."}
+Missed Sub-Checks: ${
+            item.missedSubChecks && item.missedSubChecks.length
+              ? item.missedSubChecks.join("; ")
+              : "None listed"
+          }`;
+        })
+        .join("\n\n")
+    : "No partial or zero items. The agent passed all reviewed criteria.";
+
+  const strengthsText = strongItems.length
+    ? strongItems
+        .map((item, index) => {
+          return `${index + 1}. ${item.criterion} — ${item.earned}/${item.maxPoints} points`;
+        })
+        .join("\n")
+    : "No full-credit strengths listed.";
+
+  return `
+You are a senior Quality Assurance Analyst coaching call center agents for HotelPlanner.
+
+Write coaching for a QA review using a professional, direct, supportive, and practical tone.
+Do not sound robotic.
+Do not shame the agent.
+Do not invent facts.
+Use only the QA score, rubric details, missed criteria, evaluator notes, and sub-checks provided below.
+Focus on behavior, not personality.
+Give coaching that a call center leader can read during a live coaching session.
+
+Agent: ${metadata.agentName || "Unknown Agent"}
+Evaluator: ${metadata.evaluator || "Unknown Evaluator"}
+Evaluator Role: ${metadata.evaluatorRole || "Unknown Role"}
+Call Center: ${metadata.callCenter || "Unknown Call Center"}
+QA Type: ${qaType === "flights" ? "FLYus / Flights QA" : "Customer Service QA"}
+Evaluation Mode: ${metadata.evaluationMode || "Internal QA"}
+Official Final Score: ${metadata.isOfficialFinal ? "YES" : "NO"}
+Final Score: ${result.percent}%
+Final Result: ${result.result}
+Passing Score: ${result.passingScore}%
+
+Overall QA Summary:
+${result.summary}
+
+Strengths:
+${strengthsText}
+
+Missed or Partial Criteria:
+${missedText}
+
+Write the coaching in this exact format:
+
+QA Coaching Summary:
+Give a short paragraph explaining the overall performance.
+
+What went well:
+List 2 to 4 strengths from the QA result. If there are no strengths, say the agent should rebuild consistency in the reviewed behaviors.
+
+Main coaching opportunities:
+List the missed or partial criteria in plain language. Explain what the agent missed and why it matters to the guest experience, compliance, or documentation quality.
+
+What the agent should do differently next time:
+Give specific behaviors the agent should use on the next call.
+
+Leader coaching script:
+Write a short script the leader can say directly to the agent.
+
+Action plan:
+Give 3 clear action steps.
+
+Follow-up:
+Give one follow-up action for the leader or QA team.
+`.trim();
+}
+
 function calculateLiveScoreStats(criteria = [], answers = {}, fallbackResult = null) {
   let earnedSoFar = 0;
   let possibleSoFar = 0;
@@ -591,6 +681,7 @@ function App() {
       saved: false,
       error: ""
     });
+    setLatestAICoaching("");
     setPanel("quiz");
   }
 
@@ -640,7 +731,43 @@ function App() {
       error: ""
     });
 
-    showToast("Finishing QA and saving automatically...");
+    setAiLoading(true);
+    showToast("Finishing QA, generating coaching, and saving automatically...");
+
+    const coachingPrompt = buildQaAnalystPrompt({
+      metadata,
+      qaType,
+      result
+    });
+
+    let coachingText = "";
+
+    try {
+      const aiResponse = await api.aiCoaching({
+        metadata: {
+          ...metadata,
+          qaType
+        },
+        result,
+        coachingPrompt
+      });
+
+      coachingText =
+        aiResponse.coaching ||
+        aiResponse.message ||
+        "AI coaching was generated, but no coaching text was returned.";
+
+      setLatestAICoaching(coachingText);
+    } catch (err) {
+      coachingText =
+        `QA Coaching Summary:\nAI coaching could not generate automatically, but the QA score was still saved.\n\nError: ${
+          err.message || "Unknown AI coaching error."
+        }\n\nManual Coaching Prompt Used:\n${coachingPrompt}`;
+
+      setLatestAICoaching(coachingText);
+    } finally {
+      setAiLoading(false);
+    }
 
     try {
       await api.submit({
@@ -650,7 +777,7 @@ function App() {
         },
         answers,
         result,
-        aiCoaching: ""
+        aiCoaching: coachingText
       });
 
       localStorage.removeItem("qaFormReactProgress");
@@ -661,7 +788,7 @@ function App() {
         error: ""
       });
 
-      showToast("✅ QA saved automatically to Google Sheet.");
+      showToast("✅ QA saved automatically with coaching.");
     } catch (err) {
       setAutoSaveStatus({
         saving: false,
@@ -682,27 +809,31 @@ function App() {
     setAiLoading(true);
     setLatestAICoaching("");
 
+    const coachingPrompt = buildQaAnalystPrompt({
+      metadata,
+      qaType,
+      result: latestResult
+    });
+
     try {
       const response = await api.aiCoaching({
         metadata: {
           ...metadata,
           qaType
         },
-        result: latestResult
+        result: latestResult,
+        coachingPrompt
       });
 
-      if (!response.ok || !response.coaching) {
-        setLatestAICoaching(
-          `${response.friendlyError || "AI coaching did not generate."}\n\n${response.technicalError || ""}`
-        );
-        showToast("AI coaching did not generate.");
-        return;
-      }
+      const coachingText =
+        response.coaching ||
+        response.message ||
+        "AI coaching was generated, but no coaching text was returned.";
 
-      setLatestAICoaching(response.coaching);
+      setLatestAICoaching(coachingText);
       showToast("AI coaching generated.");
     } catch (err) {
-      setLatestAICoaching(`🤖 AI Coaching Error\n\n${err.message}`);
+      setLatestAICoaching(`🤖 AI Coaching Error\n\n${err.message}\n\n${coachingPrompt}`);
     } finally {
       setAiLoading(false);
     }
@@ -1659,7 +1790,7 @@ function ResultPanel({
         </button>
 
         <button className="ai-btn" onClick={onAi} disabled={aiLoading}>
-          <Sparkles size={18} /> {aiLoading ? "AI is thinking..." : "Generate AI Coaching"}
+          <Sparkles size={18} /> {aiLoading ? "AI is thinking..." : "Regenerate QA Coaching"}
         </button>
 
         <button className="secondary-btn" onClick={onCopy}>
@@ -1716,14 +1847,14 @@ function ResultPanel({
             <>
               <div className="ai-orb" />
               <div>
-                <h3>AI coach is reviewing the score...</h3>
-                <p>Checking missed criteria, notes, critical gates, and coaching opportunities. 🎧</p>
+                <h3>QA analyst is writing coaching...</h3>
+                <p>Reviewing missed criteria, notes, sub-checks, score, and coaching opportunities. 🎧</p>
               </div>
             </>
           ) : (
             <>
               <h3>
-                <Brain size={22} /> AI Coaching Summary
+                <Brain size={22} /> QA Analyst Coaching
               </h3>
               <div className="ai-result-body">{latestAICoaching}</div>
             </>
