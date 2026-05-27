@@ -323,5 +323,8 @@ function App() {
   const liveResult = calculateLocalResult();
   const liveStats = calculateLiveScoreStats(criteria, answers, liveResult);
 
-  useEffect(() => {
-    document.body.className = theme === "
+ // C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\client\src\App.jsx
+
+useEffect(() => {
+  document.body.className = theme === "dark" ? "dark" : "";
+}, [theme]);
