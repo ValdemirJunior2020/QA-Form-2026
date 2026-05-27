@@ -207,6 +207,11 @@ function App() {
   const [latestAICoaching, setLatestAICoaching] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState({
+    saving: false,
+    saved: false,
+    error: ""
+  });
   const [pastRows, setPastRows] = useState([]);
 
   const [dashboardInput, setDashboardInput] = useState({
@@ -249,7 +254,7 @@ function App() {
 
   function showToast(message) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 2800);
+    window.setTimeout(() => setToast(""), 3500);
   }
 
   async function loadApp() {
@@ -445,7 +450,12 @@ function App() {
 
       const criterionName = String(item.criterion || "").toLowerCase();
 
-      if (criterionName.includes("documentation quality") && !notes) {
+      if (
+        criterionName.includes("documentation quality") &&
+        rating &&
+        rating !== "N/A" &&
+        !notes
+      ) {
         forceFinalZero = true;
         forceFinalZeroReason =
           "Documentation Quality had no notes/evidence. This is a complete QA fail, so the final score is forced to 0%.";
@@ -481,7 +491,12 @@ function App() {
         feedback = item.zeroReason || "No credit. Required QA behavior was missed.";
       }
 
-      if (criterionName.includes("documentation quality") && !notes) {
+      if (
+        criterionName.includes("documentation quality") &&
+        rating &&
+        rating !== "N/A" &&
+        !notes
+      ) {
         feedback =
           "Complete QA fail: Documentation Quality requires notes/evidence. No notes were added, so the final QA score is forced to 0%.";
       }
@@ -571,6 +586,11 @@ function App() {
 
     setCurrentIndex(0);
     saveProgress(answers, metadata, 0);
+    setAutoSaveStatus({
+      saving: false,
+      saved: false,
+      error: ""
+    });
     setPanel("quiz");
   }
 
@@ -607,11 +627,50 @@ function App() {
     setPanel("start");
   }
 
-  function finishQA() {
+  async function finishQA() {
     const result = calculateLocalResult();
+
     setLatestResult(result);
     setLatestAICoaching("");
     setPanel("result");
+
+    setAutoSaveStatus({
+      saving: true,
+      saved: false,
+      error: ""
+    });
+
+    showToast("Finishing QA and saving automatically...");
+
+    try {
+      await api.submit({
+        metadata: {
+          ...metadata,
+          qaType
+        },
+        answers,
+        result,
+        aiCoaching: ""
+      });
+
+      localStorage.removeItem("qaFormReactProgress");
+
+      setAutoSaveStatus({
+        saving: false,
+        saved: true,
+        error: ""
+      });
+
+      showToast("✅ QA saved automatically to Google Sheet.");
+    } catch (err) {
+      setAutoSaveStatus({
+        saving: false,
+        saved: false,
+        error: err.message || "Could not save QA automatically."
+      });
+
+      showToast(err.message || "Could not save QA automatically.");
+    }
   }
 
   async function generateAICoaching() {
@@ -676,12 +735,21 @@ function App() {
       });
 
       localStorage.removeItem("qaFormReactProgress");
-      setAnswers({});
-      setLatestResult(null);
-      setLatestAICoaching("");
-      setPanel("start");
-      showToast("QA response saved to Google Sheet.");
+
+      setAutoSaveStatus({
+        saving: false,
+        saved: true,
+        error: ""
+      });
+
+      showToast("✅ QA response saved to Google Sheet.");
     } catch (err) {
+      setAutoSaveStatus({
+        saving: false,
+        saved: false,
+        error: err.message || "Could not save QA."
+      });
+
       showToast(err.message || "Could not save QA.");
     } finally {
       setSaving(false);
@@ -1165,6 +1233,7 @@ function App() {
             aiLoading={aiLoading}
             latestAICoaching={latestAICoaching}
             saving={saving}
+            autoSaveStatus={autoSaveStatus}
             onBack={() => setPanel("quiz")}
             onAi={generateAICoaching}
             onCopy={copyCoachingNotes}
@@ -1515,6 +1584,7 @@ function ResultPanel({
   aiLoading,
   latestAICoaching,
   saving,
+  autoSaveStatus,
   onBack,
   onAi,
   onCopy,
@@ -1565,6 +1635,24 @@ function ResultPanel({
         currentItem={{ criterion: "Completed QA Review" }}
       />
 
+      {autoSaveStatus?.saving && (
+        <div className="notice">
+          <strong>Saving...</strong> QA is being saved automatically to Google Sheet.
+        </div>
+      )}
+
+      {autoSaveStatus?.saved && (
+        <div className="notice">
+          <strong>✅ Saved automatically.</strong> This QA was saved to Google Sheet.
+        </div>
+      )}
+
+      {autoSaveStatus?.error && (
+        <div className="notice danger-notice">
+          <strong>Save failed.</strong> {autoSaveStatus.error}
+        </div>
+      )}
+
       <div className="button-row">
         <button className="secondary-btn" onClick={onBack}>
           Back to Edit
@@ -1582,9 +1670,23 @@ function ResultPanel({
           Print Coaching
         </button>
 
-        <button className="primary-btn" onClick={onSave} disabled={saving}>
-          {saving ? "Saving..." : "Save to Google Sheet"}
-        </button>
+        {autoSaveStatus?.saving && (
+          <button className="primary-btn" disabled>
+            Saving automatically...
+          </button>
+        )}
+
+        {autoSaveStatus?.saved && (
+          <button className="primary-btn" disabled>
+            ✅ Saved to Google Sheet
+          </button>
+        )}
+
+        {autoSaveStatus?.error && (
+          <button className="primary-btn" onClick={onSave} disabled={saving}>
+            {saving ? "Saving..." : "Retry Save"}
+          </button>
+        )}
       </div>
 
       <div className="summary-box">
