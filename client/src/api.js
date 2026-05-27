@@ -2,7 +2,7 @@
 
 const APPS_SCRIPT_URL =
   import.meta.env.VITE_APPS_SCRIPT_URL ||
-  "https://script.google.com/macros/s/AKfycbyCcPsEKBV0kr-O2YhGGeoddcXFj6niqs12KWtjeH4FeQHnWbL4cOrv4gzMEbN0MI8LCA/exec";
+  "https://script.google.com/macros/s/AKfycbwEwtiwpudZvX2J85V_mhUUzPy6rPAxOjQKcSEq0EiBZB-AMXInKBHawmPW7PAH54U7fQ/exec";
 
 async function appsScriptPost(action, payload = {}) {
   const response = await fetch(APPS_SCRIPT_URL, {
