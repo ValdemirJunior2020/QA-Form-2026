@@ -1,10 +1,10 @@
-// C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\server\index.js
+// C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\server\src\index.js
 
 require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const appDataRoutes = require("./routes/appData.routes");
+const appDataRoutes = require("../routes/appData.routes");
 
 const app = express();
 
@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://127.0.0.1:5173",
   "https://qa-form-2026.netlify.app",
   process.env.CLIENT_URL
 ].filter(Boolean);
@@ -89,12 +90,16 @@ Overall Coaching:
 Strong performance from ${agentName}. The agent met the expected behaviors for this QA review.
 
 What the agent did well:
-${fullItems
-  .map(
-    (item, index) =>
-      `${index + 1}. ${item.criterion} — ${item.earned}/${item.maxPoints} pts`
-  )
-  .join("\n")}
+${
+  fullItems.length
+    ? fullItems
+        .map(
+          (item, index) =>
+            `${index + 1}. ${item.criterion} — ${item.earned}/${item.maxPoints} pts`
+        )
+        .join("\n")
+    : "No full-credit strengths were found in this review."
+}
 
 Recommended Coaching Message:
 ${agentName}, this was a strong QA result. Continue following the rubric, keep the same level of ownership, and maintain clear documentation on every call.

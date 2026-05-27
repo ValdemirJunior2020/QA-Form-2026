@@ -1,4 +1,4 @@
-// C:\Users\User\Downloads\QA-Form-2026-main\QA-Form-2026-main\client\src\App.jsx
+// C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\client\src\App.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import confetti from "canvas-confetti";
@@ -88,6 +88,101 @@ function escapeText(value) {
   return String(value ?? "");
 }
 
+function calculateEarned(criterion, answer) {
+  const rating = answer?.rating || "";
+
+  if (rating === "Full" || rating === "N/A") {
+    return Number(criterion.maxPoints || 0);
+  }
+
+  if (rating === "Partial") {
+    return Number(criterion.maxPoints || 0) / 2;
+  }
+
+  return 0;
+}
+
+function calculateLiveScoreStats(criteria = [], answers = {}, fallbackResult = null) {
+  let earnedSoFar = 0;
+  let possibleSoFar = 0;
+  let totalPossible = 0;
+  let completedCriteria = 0;
+
+  const rows = criteria.map((criterion) => {
+    const answer = answers[criterion.id] || emptyAnswer();
+    const rating = answer.rating || "";
+    const maxPoints = Number(criterion.maxPoints || 0);
+    const earned = calculateEarned(criterion, answer);
+    const isScored = Boolean(rating);
+
+    totalPossible += maxPoints;
+
+    if (isScored) {
+      completedCriteria += 1;
+      earnedSoFar += earned;
+      possibleSoFar += maxPoints;
+    }
+
+    return {
+      id: criterion.id,
+      number: criterion.number,
+      criterion: criterion.criterion,
+      rating: rating || "Not scored",
+      earned,
+      maxPoints,
+      isScored
+    };
+  });
+
+  if (!criteria.length && fallbackResult) {
+    const score = Number(fallbackResult.score || 0);
+    const maxScore = Number(fallbackResult.maxScore || 0);
+    const percent = Number(fallbackResult.percent || 0);
+
+    return {
+      earnedSoFar: score,
+      possibleSoFar: maxScore,
+      totalPossible: maxScore,
+      completedCriteria: Array.isArray(fallbackResult.details)
+        ? fallbackResult.details.length
+        : 0,
+      totalCriteria: Array.isArray(fallbackResult.details)
+        ? fallbackResult.details.length
+        : 0,
+      currentPercent: percent,
+      scoredOnlyPercent: percent,
+      rows: Array.isArray(fallbackResult.details)
+        ? fallbackResult.details.map((detail) => ({
+            id: detail.id,
+            number: detail.number,
+            criterion: detail.criterion,
+            rating: detail.rating || "Not scored",
+            earned: detail.earned || 0,
+            maxPoints: detail.maxPoints || 0,
+            isScored: Boolean(detail.rating)
+          }))
+        : []
+    };
+  }
+
+  const currentPercent =
+    totalPossible > 0 ? Math.round((earnedSoFar / totalPossible) * 100) : 0;
+
+  const scoredOnlyPercent =
+    possibleSoFar > 0 ? Math.round((earnedSoFar / possibleSoFar) * 100) : 0;
+
+  return {
+    earnedSoFar: Math.round(earnedSoFar * 100) / 100,
+    possibleSoFar: Math.round(possibleSoFar * 100) / 100,
+    totalPossible: Math.round(totalPossible * 100) / 100,
+    completedCriteria,
+    totalCriteria: criteria.length,
+    currentPercent,
+    scoredOnlyPercent,
+    rows
+  };
+}
+
 function App() {
   const [appData, setAppData] = useState(defaultAppData);
   const [loading, setLoading] = useState(true);
@@ -138,6 +233,7 @@ function App() {
 
   const currentItem = criteria[currentIndex];
   const liveResult = calculateLocalResult();
+  const liveStats = calculateLiveScoreStats(criteria, answers, liveResult);
 
   useEffect(() => {
     document.body.className = theme === "dark" ? "dark" : "";
@@ -754,9 +850,12 @@ function App() {
             <LiveScoringBanner
               metadata={metadata}
               liveResult={liveResult}
+              liveStats={liveStats}
               currentIndex={currentIndex}
               totalCriteria={criteria.length}
               currentItem={currentItem}
+              criteria={criteria}
+              answers={answers}
             />
 
             <div className="form-grid">
@@ -909,9 +1008,12 @@ function App() {
             <LiveScoringBanner
               metadata={metadata}
               liveResult={liveResult}
+              liveStats={liveStats}
               currentIndex={currentIndex}
               totalCriteria={criteria.length}
               currentItem={currentItem}
+              criteria={criteria}
+              answers={answers}
             />
 
             <div className="quiz-top">
@@ -924,7 +1026,7 @@ function App() {
 
               <div className="score-box">
                 <span>Live Final Screen Score</span>
-                <strong>{liveResult.percent}%</strong>
+                <strong>{liveStats.currentPercent}%</strong>
               </div>
             </div>
 
@@ -979,6 +1081,7 @@ function App() {
                 criteria={criteria}
                 answers={answers}
                 liveResult={liveResult}
+                liveStats={liveStats}
                 metadata={metadata}
                 currentItem={currentItem}
               />
@@ -1162,21 +1265,14 @@ function FunnyLoadingScreen({ title, error = "", onRetry }) {
   );
 }
 
-function calculateEarned(criterion, answer) {
-  const rating = answer?.rating || "";
-
-  if (rating === "Full" || rating === "N/A") {
-    return Number(criterion.maxPoints || 0);
-  }
-
-  if (rating === "Partial") {
-    return Number(criterion.maxPoints || 0) / 2;
-  }
-
-  return 0;
-}
-
-function LiveScoringBanner({ metadata, liveResult, currentIndex, totalCriteria, currentItem }) {
+function LiveScoringBanner({
+  metadata,
+  liveResult,
+  liveStats,
+  currentIndex,
+  totalCriteria,
+  currentItem
+}) {
   const canSubmitFinal = metadata.evaluatorRole === FINAL_REVIEWER_ROLE;
 
   return (
@@ -1201,7 +1297,21 @@ function LiveScoringBanner({ metadata, liveResult, currentIndex, totalCriteria, 
 
         <div className="stat-card">
           <span>Live Score</span>
-          <strong>{liveResult.percent}%</strong>
+          <strong>{liveStats.currentPercent}%</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Live Points</span>
+          <strong>
+            {liveStats.earnedSoFar} / {liveStats.totalPossible}
+          </strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Criteria Scored</span>
+          <strong>
+            {liveStats.completedCriteria} / {liveStats.totalCriteria}
+          </strong>
         </div>
       </div>
 
@@ -1216,10 +1326,8 @@ function LiveScoringBanner({ metadata, liveResult, currentIndex, totalCriteria, 
       </div>
 
       <div className="calculation-line">
-        <span>Current points calculation</span>
-        <strong>
-          {liveResult.score} / {liveResult.maxScore} pts
-        </strong>
+        <span>Scored items average</span>
+        <strong>{liveStats.scoredOnlyPercent}%</strong>
       </div>
 
       <div className="calculation-line">
@@ -1243,13 +1351,9 @@ function LiveScoringBanner({ metadata, liveResult, currentIndex, totalCriteria, 
   );
 }
 
-function LiveCalculation({ criteria, answers, liveResult, metadata, currentItem }) {
+function LiveCalculation({ criteria, answers, liveResult, liveStats, metadata, currentItem }) {
   const currentAnswer = answers[currentItem.id] || emptyAnswer();
   const currentEarned = calculateEarned(currentItem, currentAnswer);
-
-  const rawScore = criteria.reduce((sum, item) => {
-    return sum + calculateEarned(item, answers[item.id] || emptyAnswer());
-  }, 0);
 
   return (
     <div className="live-calculation-box">
@@ -1280,15 +1384,22 @@ function LiveCalculation({ criteria, answers, liveResult, metadata, currentItem 
       </div>
 
       <div className="calculation-line">
-        <span>Current evaluator total before complete-fail rule</span>
+        <span>Live total points</span>
         <strong>
-          {rawScore} / {liveResult.maxScore} pts
+          {liveStats.earnedSoFar} / {liveStats.totalPossible} pts
         </strong>
       </div>
 
       <div className="calculation-line">
-        <span>Final evaluator percentage</span>
-        <strong>{liveResult.percent}%</strong>
+        <span>Live score percentage</span>
+        <strong>{liveStats.currentPercent}%</strong>
+      </div>
+
+      <div className="calculation-line">
+        <span>Completed criteria</span>
+        <strong>
+          {liveStats.completedCriteria} / {liveStats.totalCriteria}
+        </strong>
       </div>
 
       <div className="calculation-line">
@@ -1312,24 +1423,26 @@ function LiveCalculation({ criteria, answers, liveResult, metadata, currentItem 
       )}
 
       <div className="individual-points-box">
-        <h4>Individual Points Live Breakdown</h4>
+        <h4>Live Points Breakdown</h4>
 
-        {criteria.map((criterion) => {
-          const answer = answers[criterion.id] || emptyAnswer();
-          const earned = calculateEarned(criterion, answer);
+        {liveStats.rows.map((row) => (
+          <div
+            className="calculation-line"
+            key={row.id}
+            style={{
+              background: row.isScored ? "#ecfdf5" : "#fff7ed"
+            }}
+          >
+            <span>
+              {row.number}. {row.criterion}
+            </span>
 
-          return (
-            <div className="calculation-line" key={criterion.id}>
-              <span>
-                {criterion.number}. {criterion.criterion}
-              </span>
-              <strong>
-                {earned} / {criterion.maxPoints} pts{" "}
-                <small>({answer.rating || "Not selected"})</small>
-              </strong>
-            </div>
-          );
-        })}
+            <strong>
+              {row.earned} / {row.maxPoints} pts{" "}
+              <small>({row.rating})</small>
+            </strong>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1416,6 +1529,8 @@ function ResultPanel({
   onCopy,
   onSave
 }) {
+  const resultStats = calculateLiveScoreStats([], {}, result);
+
   return (
     <section className="panel">
       <div className={`result-header ${result.result === "PASSED" ? "pass" : "fail"}`}>
@@ -1453,6 +1568,7 @@ function ResultPanel({
       <LiveScoringBanner
         metadata={metadata}
         liveResult={result}
+        liveStats={resultStats}
         currentIndex={0}
         totalCriteria={result.details.length}
         currentItem={{ criterion: "Completed QA Review" }}
