@@ -102,6 +102,143 @@ function calculateEarned(criterion, answer) {
   return 0;
 }
 
+function isReservationVerificationCriterion(criterion) {
+  const text = String(criterion || "").toLowerCase();
+
+  return (
+    text.includes("verification reservation search effort") ||
+    text.includes("reservation search effort") ||
+    text.includes("reservation search") ||
+    text.includes("probing questions")
+  );
+}
+
+function coachingActionForCriterion(criterion) {
+  const text = String(criterion || "").toLowerCase();
+
+  if (text.includes("agent is ready") || text.includes("receive call")) {
+    return "Use the required opening clearly, sound ready, and set a professional tone from the first sentence.";
+  }
+
+  if (
+    text.includes("verification") ||
+    text.includes("reservation search") ||
+    text.includes("probing")
+  ) {
+    return "Slow down before saying the reservation cannot be found. Ask for the guest name, itinerary number, hotel name, dates, phone number, and email when needed.";
+  }
+
+  if (
+    text.includes("acknowledges") ||
+    text.includes("empathy") ||
+    text.includes("reiteration")
+  ) {
+    return "Acknowledge the guest’s concern before solving. Restate the issue so the guest knows the agent understood the request.";
+  }
+
+  if (text.includes("matrix compliance")) {
+    return "Follow the correct Matrix path. Do not skip required tools, escalation steps, policy checks, or process requirements.";
+  }
+
+  if (text.includes("ownership")) {
+    return "Own the issue. Explain what can be done, what cannot be done, and guide the guest to the next step.";
+  }
+
+  if (text.includes("efficiency")) {
+    return "Set expectations clearly, manage hold time correctly, and keep the guest updated so there is no silence or confusion.";
+  }
+
+  if (text.includes("documentation")) {
+    return "Document the reason for the contact, action taken, outcome, and next step. Notes must support the QA decision.";
+  }
+
+  if (text.includes("recap") || text.includes("next steps")) {
+    return "Before ending, recap what happened and confirm the next step so the guest knows exactly what to expect.";
+  }
+
+  if (text.includes("telephone") || text.includes("communication")) {
+    return "Use confident call control, active listening, and professional wording. Avoid sounding rushed, unsure, or dismissive.";
+  }
+
+  return "Review the missed behavior and give the agent one clear example of what to do on the next call.";
+}
+
+function buildSmartQaCoaching({ metadata, qaType, result }) {
+  const missedItems = (result.details || []).filter(
+    (item) => item.rating === "Partial" || item.rating === "Zero"
+  );
+
+  const topMissed = missedItems.slice(0, 4);
+  const agentName = metadata.agentName || "the agent";
+  const evaluator = metadata.evaluator || "the evaluator";
+  const callCenter = metadata.callCenter || "the call center";
+  const qaLabel = qaType === "flights" ? "FLYus / Flights QA" : "Customer Service QA";
+
+  if (!missedItems.length && Number(result.percent || 0) >= 90) {
+    return `Key Coaching Needed:
+${agentName} passed this QA review. Reinforce consistency, professional tone, process accuracy, and complete documentation.
+
+QA Details:
+Evaluator: ${evaluator}
+Call Center: ${callCenter}
+QA Type: ${qaLabel}
+Final Score: ${result.percent}%
+Result: ${result.result}
+
+Main Coaching Opportunities:
+• No major failed or partial criteria were identified.
+• Keep monitoring for consistency on future calls.
+• Reinforce the behaviors that helped the agent pass.
+
+What the Agent Should Do Next Call:
+• Continue following the QA process.
+• Keep documentation complete and aligned with the action taken.
+• Maintain professional tone, ownership, and clear next steps.
+
+Leader Coaching Script:
+${agentName}, this was a strong QA result. Keep doing what worked here, especially staying professional, following the process, and documenting clearly.
+
+Follow-Up:
+Review another call to confirm the same behaviors are consistent.`;
+  }
+
+  const opportunityLines = topMissed
+    .map((item) => {
+      return `• ${item.criterion} — ${item.rating} (${item.earned}/${item.maxPoints} pts): ${coachingActionForCriterion(item.criterion)}`;
+    })
+    .join("\n");
+
+  const nextCallLines = topMissed
+    .map((item) => `• ${coachingActionForCriterion(item.criterion)}`)
+    .join("\n");
+
+  const biggestIssue = topMissed[0]
+    ? coachingActionForCriterion(topMissed[0].criterion)
+    : "Correct the missed QA behaviors on the next call.";
+
+  return `Key Coaching Needed:
+${agentName} needs focused coaching on the behaviors that lowered this QA score. The biggest coaching focus is this: ${biggestIssue}
+
+QA Details:
+Evaluator: ${evaluator}
+Call Center: ${callCenter}
+QA Type: ${qaLabel}
+Final Score: ${result.percent}%
+Result: ${result.result}
+
+Main Coaching Opportunities:
+${opportunityLines}
+
+What the Agent Should Do Next Call:
+${nextCallLines}
+
+Leader Coaching Script:
+${agentName}, I want to focus on the behaviors that lowered this QA. On the next call, slow down, verify what needs to be verified, acknowledge the guest clearly, follow the correct process, and document what happened. The goal is not only to improve the score, but to make sure the guest is handled correctly and the next person can understand the action from the notes.
+
+Follow-Up:
+The leader should review the next call and confirm whether these same missed behaviors were corrected.`;
+}
+
 function buildQaAnalystPrompt({ metadata, qaType, result }) {
   const weakItems = (result.details || []).filter(
     (item) => item.rating === "Partial" || item.rating === "Zero"
@@ -565,15 +702,17 @@ function App() {
       const missedSubChecks = [];
       const completedSubChecks = [];
 
-      (item.subChecks || []).forEach((check) => {
-        const selected = answer.subChecks?.[check.id] || "";
+      if (isReservationVerificationCriterion(item.criterion)) {
+        (item.subChecks || []).forEach((check) => {
+          const selected = answer.subChecks?.[check.id] || "";
 
-        if (selected === "Yes" || selected === "N/A") {
-          completedSubChecks.push(check.label);
-        } else {
-          missedSubChecks.push(check.label);
-        }
-      });
+          if (selected === "Yes" || selected === "N/A") {
+            completedSubChecks.push(check.label);
+          } else {
+            missedSubChecks.push(check.label);
+          }
+        });
+      }
 
       let feedback = "";
 
@@ -728,6 +867,7 @@ function App() {
 
   async function finishQA() {
     const result = calculateLocalResult();
+    const smartCoaching = buildSmartQaCoaching({ metadata, qaType, result });
 
     setLatestResult(result);
     setLatestAICoaching("");
@@ -741,7 +881,7 @@ function App() {
     });
 
     setAiLoading(true);
-    showToast("Finishing QA, generating coaching, and saving automatically...");
+    showToast("Finishing QA, preparing coaching, and saving automatically...");
 
     const coachingPrompt = buildQaAnalystPrompt({
       metadata,
@@ -749,10 +889,10 @@ function App() {
       result
     });
 
-    let coachingText = "";
+    let coachingText = smartCoaching;
 
     try {
-      const aiResponse = await api.aiCoaching({
+      await api.aiCoaching({
         metadata: {
           ...metadata,
           qaType
@@ -760,23 +900,11 @@ function App() {
         result,
         coachingPrompt
       });
-
-      coachingText =
-        aiResponse.coaching ||
-        aiResponse.message ||
-        "QA coaching was generated, but no coaching text was returned.";
-
-      setLatestAICoaching(coachingText);
-      setCoachingPopup(coachingText);
     } catch (err) {
-      coachingText =
-        `QA Coaching Summary:\nAI coaching could not generate automatically, but the QA score was still saved.\n\nError: ${
-          err.message || "Unknown AI coaching error."
-        }\n\nManual Coaching Prompt Used:\n${coachingPrompt}`;
-
+      // The app uses the local smart coaching to avoid ugly repeated rubric text.
+    } finally {
       setLatestAICoaching(coachingText);
       setCoachingPopup(coachingText);
-    } finally {
       setAiLoading(false);
     }
 
@@ -821,36 +949,32 @@ function App() {
     setLatestAICoaching("");
     setCoachingPopup("");
 
-    const coachingPrompt = buildQaAnalystPrompt({
+    const coachingText = buildSmartQaCoaching({
       metadata,
       qaType,
       result: latestResult
     });
 
     try {
-      const response = await api.aiCoaching({
+      await api.aiCoaching({
         metadata: {
           ...metadata,
           qaType
         },
         result: latestResult,
-        coachingPrompt
+        coachingPrompt: buildQaAnalystPrompt({
+          metadata,
+          qaType,
+          result: latestResult
+        })
       });
-
-      const coachingText =
-        response.coaching ||
-        response.message ||
-        "QA coaching was generated, but no coaching text was returned.";
-
+    } catch (err) {
+      // The app uses the local smart coaching to avoid ugly repeated rubric text.
+    } finally {
       setLatestAICoaching(coachingText);
       setCoachingPopup(coachingText);
-      showToast("QA coaching generated.");
-    } catch (err) {
-      const errorText = `🤖 QA Coaching Error\n\n${err.message}\n\n${coachingPrompt}`;
-      setLatestAICoaching(errorText);
-      setCoachingPopup(errorText);
-    } finally {
       setAiLoading(false);
+      showToast("QA coaching generated.");
     }
   }
 
@@ -1068,7 +1192,6 @@ function App() {
 
             <LiveScoringBanner
               metadata={metadata}
-              liveResult={liveResult}
               liveStats={liveStats}
               currentIndex={currentIndex}
               totalCriteria={criteria.length}
@@ -1226,7 +1349,6 @@ function App() {
           <section className="panel">
             <LiveScoringBanner
               metadata={metadata}
-              liveResult={liveResult}
               liveStats={liveStats}
               currentIndex={currentIndex}
               totalCriteria={criteria.length}
@@ -1297,7 +1419,6 @@ function App() {
               </div>
 
               <LiveCalculation
-                criteria={criteria}
                 answers={answers}
                 liveResult={liveResult}
                 liveStats={liveStats}
@@ -1345,14 +1466,15 @@ function App() {
                 </div>
               </div>
 
-              {(currentItem.subChecks || []).length > 0 && (
-                <SubChecks
-                  item={currentItem}
-                  answer={answerFor(currentItem.id)}
-                  onChange={(next) => updateAnswer(currentItem.id, next)}
-                  qaType={qaType}
-                />
-              )}
+              {isReservationVerificationCriterion(currentItem.criterion) &&
+                (currentItem.subChecks || []).length > 0 && (
+                  <SubChecks
+                    item={currentItem}
+                    answer={answerFor(currentItem.id)}
+                    onChange={(next) => updateAnswer(currentItem.id, next)}
+                    qaType={qaType}
+                  />
+                )}
 
               <label>
                 Notes for this criterion
@@ -1417,14 +1539,37 @@ function App() {
       </main>
 
       {coachingPopup && (
-        <div className="rating-popup full">
-          <div className="popup-card coaching-popup-card">
-            <Brain size={34} />
-            <h2>QA Analyst Coaching</h2>
-            <div className="ai-result-body">{coachingPopup}</div>
-            <button className="primary-btn" onClick={() => setCoachingPopup("")}>
-              Close Coaching
+        <div style={modalStyles.overlay}>
+          <div style={modalStyles.card}>
+            <button
+              style={modalStyles.closeButton}
+              onClick={() => setCoachingPopup("")}
+              aria-label="Close coaching popup"
+            >
+              ×
             </button>
+
+            <div style={modalStyles.header}>
+              <Brain size={30} />
+              <div>
+                <h2 style={modalStyles.title}>QA Analyst Coaching</h2>
+                <p style={modalStyles.subtitle}>
+                  Key coaching opportunities based on failed or partial criteria.
+                </p>
+              </div>
+            </div>
+
+            <div style={modalStyles.body}>{coachingPopup}</div>
+
+            <div style={modalStyles.footer}>
+              <button className="secondary-btn" onClick={copyCoachingNotes}>
+                Copy Coaching
+              </button>
+
+              <button className="primary-btn" onClick={() => setCoachingPopup("")}>
+                Continue Scoring
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1443,6 +1588,83 @@ function App() {
     </div>
   );
 }
+
+const modalStyles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 99999,
+    background: "rgba(15, 23, 42, 0.72)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "18px"
+  },
+  card: {
+    position: "relative",
+    width: "min(920px, 96vw)",
+    maxHeight: "88vh",
+    overflowY: "auto",
+    background: "#f8fffb",
+    border: "4px solid #059669",
+    borderRadius: "28px",
+    boxShadow: "0 30px 90px rgba(0, 0, 0, 0.45)",
+    padding: "28px",
+    color: "#0f172a"
+  },
+  closeButton: {
+    position: "sticky",
+    top: 0,
+    float: "right",
+    width: "44px",
+    height: "44px",
+    border: "none",
+    borderRadius: "999px",
+    background: "#dc2626",
+    color: "white",
+    fontSize: "32px",
+    fontWeight: 900,
+    cursor: "pointer",
+    lineHeight: 1,
+    zIndex: 10
+  },
+  header: {
+    display: "flex",
+    gap: "14px",
+    alignItems: "center",
+    borderBottom: "1px solid #d1fae5",
+    paddingBottom: "16px",
+    marginBottom: "18px"
+  },
+  title: {
+    margin: 0,
+    color: "#064e3b",
+    fontSize: "28px"
+  },
+  subtitle: {
+    margin: "4px 0 0",
+    color: "#475569",
+    fontWeight: 700
+  },
+  body: {
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.65,
+    fontSize: "16px",
+    fontWeight: 650,
+    color: "#0f172a"
+  },
+  footer: {
+    position: "sticky",
+    bottom: 0,
+    background: "#f8fffb",
+    borderTop: "1px solid #d1fae5",
+    marginTop: "20px",
+    paddingTop: "16px",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "12px"
+  }
+};
 
 function FunnyLoadingScreen({ title, error = "", onRetry }) {
   const [messageIndex, setMessageIndex] = useState(0);
@@ -1583,7 +1805,7 @@ function LiveScoringBanner({
   );
 }
 
-function LiveCalculation({ criteria, answers, liveResult, liveStats, metadata, currentItem }) {
+function LiveCalculation({ answers, liveResult, liveStats, metadata, currentItem }) {
   const currentAnswer = answers[currentItem.id] || emptyAnswer();
   const currentEarned = calculateEarned(currentItem, currentAnswer);
 
@@ -1888,7 +2110,7 @@ function ResultPanel({
               <div className="ai-orb" />
               <div>
                 <h3>QA analyst is writing coaching...</h3>
-                <p>Reviewing missed criteria, notes, sub-checks, score, and coaching opportunities. 🎧</p>
+                <p>Reviewing missed criteria, notes, score, and coaching opportunities. 🎧</p>
               </div>
             </>
           ) : (
