@@ -623,19 +623,25 @@ function App() {
     }
   }
 
-  function showRatingPopup(rating) {
-    const data = ratingMessages[rating];
+// C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\client\src\App.jsx
 
-    if (!data) return;
-
-    setRatingPopup(data);
-
-    if (rating === "Full" || rating === "N/A") {
-      fireGreenFlakes();
-    }
-
-    window.setTimeout(() => setRatingPopup(null), 2100);
+function showRatingPopup(rating) {
+  if (rating === "Full") {
+    return;
   }
+
+  const data = ratingMessages[rating];
+
+  if (!data) return;
+
+  setRatingPopup(data);
+
+  if (rating === "N/A") {
+    fireGreenFlakes();
+  }
+
+  window.setTimeout(() => setRatingPopup(null), 2100);
+}
 
   function fireGreenFlakes() {
     const end = Date.now() + 1200;
@@ -768,18 +774,21 @@ function App() {
     }
 
     let result =
-      percent >= Number(appData.passingScore || 90)
-        ? "PASSED"
-        : "NEEDS IMPROVEMENT";
+  percent >= Number(appData.passingScore || 90)
+    ? "PASSED"
+    : "NEEDS IMPROVEMENT";
 
-    if (criticalGateFailed || forceFinalZero) {
-      result = "NEEDS IMPROVEMENT";
-    }
+/*
+  Critical gate can still force Needs Improvement.
+  Documentation missing notes should NOT force the whole score to 0%.
+*/
+if (criticalGateFailed) {
+  result = "NEEDS IMPROVEMENT";
+}
 
-    const weakItems = details
-      .filter((item) => item.rating === "Partial" || item.rating === "Zero")
-      .map((item) => item.criterion);
-
+const weakItems = details
+  .filter((item) => item.rating === "Partial" || item.rating === "Zero")
+  .map((item) => item.criterion);
     let summary =
       result === "PASSED"
         ? "Agent passed the QA coaching review."
