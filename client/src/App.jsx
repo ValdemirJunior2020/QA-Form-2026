@@ -63,11 +63,6 @@ const ratingMessages = {
     message: "Partial credit is still credit. Let’s clean up the missing pieces.",
     tone: "partial"
   },
-  Full: {
-    title: "Uhuuulll! That’s what I’m talking about! 🎉",
-    message: "Full points! Green festive flakes everywhere!",
-    tone: "full"
-  },
   "N/A": {
     title: "N/A counts as full credit ✅",
     message: "Not applicable, but still full points for this criterion.",
@@ -623,25 +618,23 @@ function App() {
     }
   }
 
-// C:\Users\Valdemir Goncalves\Desktop\Meus Projetos\qa-form-react-project\client\src\App.jsx
+  function showRatingPopup(rating) {
+    if (rating === "Full") {
+      return;
+    }
 
-function showRatingPopup(rating) {
-  if (rating === "Full") {
-    return;
+    const data = ratingMessages[rating];
+
+    if (!data) return;
+
+    setRatingPopup(data);
+
+    if (rating === "N/A") {
+      fireGreenFlakes();
+    }
+
+    window.setTimeout(() => setRatingPopup(null), 2100);
   }
-
-  const data = ratingMessages[rating];
-
-  if (!data) return;
-
-  setRatingPopup(data);
-
-  if (rating === "N/A") {
-    fireGreenFlakes();
-  }
-
-  window.setTimeout(() => setRatingPopup(null), 2100);
-}
 
   function fireGreenFlakes() {
     const end = Date.now() + 1200;
@@ -669,8 +662,6 @@ function showRatingPopup(rating) {
     let score = 0;
     let maxScore = 0;
     let criticalGateFailed = false;
-    let forceFinalZero = false;
-    let forceFinalZeroReason = "";
     const details = [];
 
     criteria.forEach((item) => {
@@ -683,19 +674,8 @@ function showRatingPopup(rating) {
         earned = Number(item.maxPoints || 0);
       } else if (rating === "Partial") {
         earned = Number(item.maxPoints || 0) / 2;
-      }
-
-      const criterionName = String(item.criterion || "").toLowerCase();
-
-      if (
-        criterionName.includes("documentation quality") &&
-        rating &&
-        rating !== "N/A" &&
-        !notes
-      ) {
-        forceFinalZero = true;
-        forceFinalZeroReason =
-          "Documentation Quality had no notes/evidence. This is a complete QA fail, so the final score is forced to 0%.";
+      } else {
+        earned = 0;
       }
 
       if (item.isCriticalGate && rating === "Zero") {
@@ -728,18 +708,10 @@ function showRatingPopup(rating) {
         feedback =
           item.partialReason ||
           "Partial credit. Some expected behaviors were missed.";
-      } else {
+      } else if (rating === "Zero") {
         feedback = item.zeroReason || "No credit. Required QA behavior was missed.";
-      }
-
-      if (
-        criterionName.includes("documentation quality") &&
-        rating &&
-        rating !== "N/A" &&
-        !notes
-      ) {
-        feedback =
-          "Complete QA fail: Documentation Quality requires notes/evidence. No notes were added, so the final QA score is forced to 0%.";
+      } else {
+        feedback = "Not scored yet.";
       }
 
       if (missedSubChecks.length > 0) {
@@ -765,38 +737,30 @@ function showRatingPopup(rating) {
       });
     });
 
-    let percent = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-
-    if (forceFinalZero) {
-      score = 0;
-      percent = 0;
-      criticalGateFailed = true;
-    }
+    const roundedScore = Math.round(score * 100) / 100;
+    const roundedMaxScore = Math.round(maxScore * 100) / 100;
+    const percent =
+      roundedMaxScore > 0 ? Math.round((roundedScore / roundedMaxScore) * 100) : 0;
 
     let result =
-  percent >= Number(appData.passingScore || 90)
-    ? "PASSED"
-    : "NEEDS IMPROVEMENT";
+      percent >= Number(appData.passingScore || 90)
+        ? "PASSED"
+        : "NEEDS IMPROVEMENT";
 
-/*
-  Critical gate can still force Needs Improvement.
-  Documentation missing notes should NOT force the whole score to 0%.
-*/
-if (criticalGateFailed) {
-  result = "NEEDS IMPROVEMENT";
-}
+    if (criticalGateFailed) {
+      result = "NEEDS IMPROVEMENT";
+    }
 
-const weakItems = details
-  .filter((item) => item.rating === "Partial" || item.rating === "Zero")
-  .map((item) => item.criterion);
+    const weakItems = details
+      .filter((item) => item.rating === "Partial" || item.rating === "Zero")
+      .map((item) => item.criterion);
+
     let summary =
       result === "PASSED"
         ? "Agent passed the QA coaching review."
         : "Agent needs coaching. Focus on missed QA criteria, documentation, process compliance, and clear next steps.";
 
-    if (forceFinalZero) {
-      summary += " " + forceFinalZeroReason;
-    } else if (criticalGateFailed) {
+    if (criticalGateFailed) {
       summary += " A critical gate item was scored as zero.";
     }
 
@@ -805,14 +769,14 @@ const weakItems = details
     }
 
     return {
-      score: Math.round(score * 100) / 100,
-      maxScore: Math.round(maxScore * 100) / 100,
+      score: roundedScore,
+      maxScore: roundedMaxScore,
       percent,
       result,
       passingScore: Number(appData.passingScore || 90),
       criticalGateFailed,
-      forceFinalZero,
-      forceFinalZeroReason,
+      forceFinalZero: false,
+      forceFinalZeroReason: "",
       summary,
       details
     };
@@ -876,7 +840,7 @@ const weakItems = details
 
   async function finishQA() {
     const result = calculateLocalResult();
-    const smartCoaching = buildSmartQaCoaching({ metadata, qaType, result });
+    const fallbackCoaching = buildSmartQaCoaching({ metadata, qaType, result });
 
     setLatestResult(result);
     setLatestAICoaching("");
@@ -890,7 +854,7 @@ const weakItems = details
     });
 
     setAiLoading(true);
-    showToast("Finishing QA, preparing coaching, and saving automatically...");
+    showToast("Finishing QA, generating AI coaching, and saving automatically...");
 
     const coachingPrompt = buildQaAnalystPrompt({
       metadata,
@@ -898,10 +862,10 @@ const weakItems = details
       result
     });
 
-    let coachingText = smartCoaching;
+    let coachingText = fallbackCoaching;
 
     try {
-      await api.aiCoaching({
+      const aiResponse = await api.aiCoaching({
         metadata: {
           ...metadata,
           qaType
@@ -909,8 +873,15 @@ const weakItems = details
         result,
         coachingPrompt
       });
+
+      coachingText =
+        aiResponse.coaching ||
+        aiResponse.message ||
+        fallbackCoaching;
     } catch (err) {
-      // The app uses the local smart coaching to avoid ugly repeated rubric text.
+      coachingText =
+        fallbackCoaching +
+        "\n\nAI Note: OpenAI did not respond, so the app used backup smart coaching.";
     } finally {
       setLatestAICoaching(coachingText);
       setCoachingPopup(coachingText);
@@ -936,7 +907,7 @@ const weakItems = details
         error: ""
       });
 
-      showToast("✅ QA saved automatically with coaching.");
+      showToast("✅ QA saved automatically with AI coaching.");
     } catch (err) {
       setAutoSaveStatus({
         saving: false,
@@ -958,27 +929,38 @@ const weakItems = details
     setLatestAICoaching("");
     setCoachingPopup("");
 
-    const coachingText = buildSmartQaCoaching({
+    const fallbackCoaching = buildSmartQaCoaching({
       metadata,
       qaType,
       result: latestResult
     });
 
+    const coachingPrompt = buildQaAnalystPrompt({
+      metadata,
+      qaType,
+      result: latestResult
+    });
+
+    let coachingText = fallbackCoaching;
+
     try {
-      await api.aiCoaching({
+      const response = await api.aiCoaching({
         metadata: {
           ...metadata,
           qaType
         },
         result: latestResult,
-        coachingPrompt: buildQaAnalystPrompt({
-          metadata,
-          qaType,
-          result: latestResult
-        })
+        coachingPrompt
       });
+
+      coachingText =
+        response.coaching ||
+        response.message ||
+        fallbackCoaching;
     } catch (err) {
-      // The app uses the local smart coaching to avoid ugly repeated rubric text.
+      coachingText =
+        fallbackCoaching +
+        "\n\nAI Note: OpenAI did not respond, so the app used backup smart coaching.";
     } finally {
       setLatestAICoaching(coachingText);
       setCoachingPopup(coachingText);
@@ -1250,7 +1232,7 @@ const weakItems = details
                   <option value="Evaluator">Evaluator</option>
                   <option value="Helper / Coach">Helper / Coach</option>
                   <option value="Team Lead">Team Lead</option>
-                  <option value="QA Leader / Final Reviewer">
+                  <option value={FINAL_REVIEWER_ROLE}>
                     QA Leader / Final Reviewer
                   </option>
                 </select>
@@ -1877,13 +1859,6 @@ function LiveCalculation({ answers, liveResult, liveStats, metadata, currentItem
           {liveResult.result}
         </strong>
       </div>
-
-      {liveResult.forceFinalZero && (
-        <div className="missed-checks-box">
-          <strong>Complete QA Fail Rule Triggered</strong>
-          <p>{liveResult.forceFinalZeroReason}</p>
-        </div>
-      )}
 
       <div className="individual-points-box">
         <h4>Live Points Breakdown</h4>
